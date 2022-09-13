@@ -22,6 +22,7 @@ class IdMap:
         """
         self.str_to_id = {}
         self.id_to_str = []
+        self.current_id = 0
 
     def __len__(self):
         """Mengembalikan banyaknya term (atau dokumen) yang disimpan di IdMap."""
@@ -29,8 +30,7 @@ class IdMap:
 
     def __get_str(self, i):
         """Mengembalikan string yang terasosiasi dengan index i."""
-        # TODO
-        return ""
+        return self.id_to_str[i]
 
     def __get_id(self, s):
         """
@@ -38,8 +38,14 @@ class IdMap:
         Jika s tidak ada pada IdMap, lalu assign sebuah integer id baru dan kembalikan
         integer id baru tersebut.
         """
-        # TODO
-        return 0
+        try:
+            data = self.str_to_id[s]
+        except:
+            self.str_to_id[s] = self.current_id
+            self.current_id += 1
+            data = self.str_to_id[s]
+            self.id_to_str.append(s)
+        return data
 
     def __getitem__(self, key):
         """
@@ -79,8 +85,23 @@ def sorted_intersect(list1, list2):
     List[Comparable]
         intersection yang sudah terurut
     """
-    # TODO
-    return []
+    result = []
+    length_list1 = len(list1)
+    length_list2 = len(list2)
+    ctr_list1 = 0
+    ctr_list2 = 0
+    while ctr_list1 < length_list1 and ctr_list2 < length_list2:
+        item_list1 = list1[ctr_list1]
+        item_list2 = list2[ctr_list2]
+        if item_list1 == item_list2:
+            result.append(item_list1)
+            ctr_list1 += 1
+            ctr_list2 += 1
+        elif item_list1 < item_list2:
+            ctr_list1 += 1
+        else:
+            ctr_list2 += 1
+    return result
 
 if __name__ == '__main__':
 

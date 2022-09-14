@@ -187,19 +187,20 @@ class InvertedIndexWriter(InvertedIndex):
         self.terms.append(term)
         current_position = self.terms.index(term)
         if len(self.postings_dict) > 0:
-            start_pos = self.postings_dict[self.terms[current_position - 1]][2]
+            find_term = self.terms[current_position - 1]
+            start_pos = InvertedIndexReader.get_postings_list(self, find_term)[2]
 
         self.postings_dict[term] = (start_pos, len(postings_list), len(encoded_postings_list))
 
+        mode = ''
         if start_pos == 0:
-            with open(self.index_file_path, 'wb') as f:
-                f.write(encoded_postings_list)
-                f.close()
+            mode = 'wb'
         else:
-            with open(self.index_file_path, 'rb+') as f:
-                f.seek(start_pos)
-                f.write(encoded_postings_list)
-                f.close()
+            mode = 'rb+'
+        with open(self.index_file_path, mode) as f:
+            f.seek(start_pos)
+            f.write(encoded_postings_list)
+            f.close()
         
         return encoded_postings_list
 

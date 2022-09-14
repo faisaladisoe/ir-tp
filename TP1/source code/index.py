@@ -1,5 +1,5 @@
-import pickle
 import os
+import pickle
 
 class InvertedIndex:
     """
@@ -120,7 +120,14 @@ class InvertedIndexReader(InvertedIndex):
         diproses di memori. JANGAN MEMUAT SEMUA INDEX DI MEMORI!
         """
         # TODO
-        return (None, [])
+        result = ''
+        data = self.postings_dict
+        try:
+            result = data[self.term_iter]
+        except IndexError:
+            raise StopIteration
+        self.term_iter += 1
+        return (result, result.values())
 
     def get_postings_list(self, term):
         """
@@ -132,7 +139,7 @@ class InvertedIndexReader(InvertedIndex):
         term disimpan.
         """
         # TODO
-        return []
+        return self.postings_dict[term]
 
 class InvertedIndexWriter(InvertedIndex):
     """
@@ -174,7 +181,27 @@ class InvertedIndexWriter(InvertedIndex):
             List of docIDs dimana term muncul
         """
         # TODO
-        return []
+        encoded_postings_list = self.postings_encoding.encode(postings_list)
+
+        start_pos = 0
+        self.terms.append(term)
+        current_position = self.terms.index(term)
+        if len(self.postings_dict) > 0:
+            start_pos = self.postings_dict[self.terms[current_position - 1]][2]
+
+        self.postings_dict[term] = (start_pos, len(postings_list), len(encoded_postings_list))
+
+        if start_pos == 0:
+            with open(self.index_file_path, 'wb') as f:
+                f.write(encoded_postings_list)
+                f.close()
+        else:
+            with open(self.index_file_path, 'rb+') as f:
+                f.seek(start_pos)
+                f.write(encoded_postings_list)
+                f.close()
+        
+        return encoded_postings_list
 
 if __name__ == "__main__":
 

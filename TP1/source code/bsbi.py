@@ -10,6 +10,7 @@ from compression import StandardPostings, VBEPostings
 from Sastrawi.Stemmer.StemmerFactory import StemmerFactory
 from Sastrawi.StopWordRemover.StopWordRemoverFactory import StopWordRemoverFactory
 from tqdm import tqdm
+from nltk.tokenize import sent_tokenize, word_tokenize
 
 class BSBIIndex:
     """
@@ -34,6 +35,8 @@ class BSBIIndex:
 
         # Untuk menyimpan nama-nama file dari semua intermediate inverted index
         self.intermediate_indices = []
+
+        self.tokenize_result = []
 
     def save(self):
         """Menyimpan doc_id_map and term_id_map ke output directory via pickle"""
@@ -87,6 +90,35 @@ class BSBIIndex:
         parse_block(...).
         """
         # TODO
+        folder_path = f'./collection/{block_dir_relative}'
+        files = os.listdir(folder_path)
+
+        # sentence segmentation & tokenisation
+        tokenize_result_with_punct = []
+        for file in files:
+            with open(f'{folder_path}/{file}', 'r') as f:
+                tokenize_result_with_punct.append([word_tokenize(t) for t in sent_tokenize(f.read())])
+
+        tokenize_result_wo_punct = []
+        for file in tokenize_result_with_punct:
+            for sentence in file:
+                tokenize_result_wo_punct.append([word for word in sentence if word.isalnum()])
+        
+        one_big_sentence = ''
+        for sentence in tokenize_result_wo_punct:
+            one_big_sentence += ' '.join(sentence) + ' '
+
+        # stemming
+        stem_factory = StemmerFactory()
+        stemmer = stem_factory.create_stemmer()
+        stemmed_sentence = stemmer.stem(one_big_sentence)
+
+        # stopwords removal
+        stop_factory = StopWordRemoverFactory()
+        stop_word_remover = stop_factory.create_stop_word_remover()
+        stop_word_removed = stop_word_remover.remove(stemmed_sentence)
+
+        print(stop_word_removed)
         return []
 
     def invert_write(self, td_pairs, index):

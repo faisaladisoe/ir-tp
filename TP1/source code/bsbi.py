@@ -92,34 +92,64 @@ class BSBIIndex:
         # TODO
         folder_path = f'./collection/{block_dir_relative}'
         files = os.listdir(folder_path)
+        paths = []
 
         # sentence segmentation & tokenisation
         tokenize_result_with_punct = []
         for file in files:
-            with open(f'{folder_path}/{file}', 'r') as f:
+            path = f'{folder_path}/{file}'
+            paths.append(path)
+            with open(path, 'r') as f:
                 tokenize_result_with_punct.append([word_tokenize(t) for t in sent_tokenize(f.read())])
 
         tokenize_result_wo_punct = []
         for file in tokenize_result_with_punct:
+            same_file_result = []
             for sentence in file:
-                tokenize_result_wo_punct.append([word for word in sentence if word.isalnum()])
-        
-        one_big_sentence = ''
-        for sentence in tokenize_result_wo_punct:
-            one_big_sentence += ' '.join(sentence) + ' '
+                same_file_result.append([word for word in sentence if word.isalnum()])
+            tokenize_result_wo_punct.append(same_file_result)
+
+        tokenize_result_in_sentences = []
+        for file in tokenize_result_wo_punct:
+            whole_sentence = ''
+            for sentence in file:
+                whole_sentence += ' '.join(sentence) + ' '
+            tokenize_result_in_sentences.append(whole_sentence)
 
         # stemming
         stem_factory = StemmerFactory()
         stemmer = stem_factory.create_stemmer()
-        stemmed_sentence = stemmer.stem(one_big_sentence)
+        stemmed_result_in_sentences = []
+        for file in tokenize_result_in_sentences:
+            stemmed_sentence = stemmer.stem(file)
+            stemmed_result_in_sentences.append(stemmed_sentence)
 
         # stopwords removal
         stop_factory = StopWordRemoverFactory()
         stop_word_remover = stop_factory.create_stop_word_remover()
-        stop_word_removed = stop_word_remover.remove(stemmed_sentence)
+        stopword_removed_result_in_sentences = []
+        for file in stemmed_result_in_sentences:
+            stop_word_removed = stop_word_remover.remove(file)
+            stopword_removed_result_in_sentences.append(stop_word_removed)
 
-        print(stop_word_removed)
-        return []
+        # term and doc mapping
+        words_per_file = [file.split(' ') for file in stopword_removed_result_in_sentences]
+        term_id_map_result = []
+        for sentence in words_per_file:
+            for term in sentence:
+                term_id_map_result.append(self.term_id_map[term])
+        doc_id_map_result = [self.doc_id_map[docname] for docname in paths]
+
+        # pair matching
+        td_pairs = []
+        for idx in range(len(words_per_file)):
+            for term in words_per_file[idx]:
+                termId = self.term_id_map[term]
+                docname = paths[idx]
+                docId = self.doc_id_map[docname]
+                td_pairs.append((termId, docId))
+
+        return td_pairs
 
     def invert_write(self, td_pairs, index):
         """

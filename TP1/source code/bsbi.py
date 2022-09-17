@@ -249,6 +249,8 @@ class BSBIIndex:
         JANGAN LEMPAR ERROR/EXCEPTION untuk terms yang TIDAK ADA di collection.
         """
         # TODO
+        self.load()
+
         # stemming
         stem_factory = StemmerFactory()
         stemmer = stem_factory.create_stemmer()
@@ -267,29 +269,25 @@ class BSBIIndex:
             if len(splitted_query) > 1:
                 for term in splitted_query:
                     termId = self.term_id_map[term]
-                    # print(termId)
                     postings_list = final_index.get_postings_list(termId)
                     postings_list_result.append(postings_list)
             else:
                 termId = self.term_id_map[splitted_query[0]]
-                # print(termId)
                 postings_list = final_index.get_postings_list(termId)
-                # print(postings_list)
                 postings_list_result.append(postings_list)
-        
-        result = []
+    
+        intersection = []
         if (len(postings_list_result) > 1):
-            find_intersection = sorted_intersect(VBEPostings.decode(postings_list_result[0]), VBEPostings.decode(postings_list_result[1]))
+            find_intersection = sorted_intersect(postings_list_result[0], postings_list_result[1])
             if (len(postings_list_result) > 2):
                 for idx in range(2, len(postings_list_result)):
-                    find_intersection = sorted_intersect(find_intersection, VBEPostings.decode(postings_list_result[idx]))
-            result = find_intersection
+                    find_intersection = sorted_intersect(find_intersection, postings_list_result[idx])
+            intersection = find_intersection
         else:
-            result = VBEPostings.decode(postings_list_result[0])
+            intersection = postings_list_result[0]
         
-        # for item in result:
-        #     print(self.doc_id_map[item])
-        print(result)
+        result = [self.doc_id_map[item] for item in intersection]
+
         return result
 
 

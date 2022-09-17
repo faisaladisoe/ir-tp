@@ -200,17 +200,22 @@ class BSBIIndex:
                 if not len(item[1]):
                     break
                 term_pl_container.append(item[0])
-        
+
         data = {}
-        for item in term_pl_container:
-            term_pl_pairs = item[0]
+        for term_pl_pairs in term_pl_container:
             for pair in term_pl_pairs:
                 try:
-                    data[pair[0]] += pair[1]
+                    data[pair[0]] += VBEPostings.decode(pair[1])
                 except:
-                    data[pair[0]] = pair[1]
-
-        # handle multiple postings list when merge
+                    data[pair[0]] = VBEPostings.decode(pair[1])
+        
+        # handle multiple occurence & resorted
+        for pair in data:
+            data[pair] = sorted(list(set(data[pair])))
+        
+        # re-encode postings list
+        for pair in data:
+            data[pair] = VBEPostings.encode(data[pair])
 
         # sort data using external sorting
         heap = []
@@ -244,7 +249,48 @@ class BSBIIndex:
         JANGAN LEMPAR ERROR/EXCEPTION untuk terms yang TIDAK ADA di collection.
         """
         # TODO
-        return []
+        # stemming
+        stem_factory = StemmerFactory()
+        stemmer = stem_factory.create_stemmer()
+        stemmed_query = stemmer.stem(query)
+
+        # stopwords removal
+        stop_factory = StopWordRemoverFactory()
+        stop_word_remover = stop_factory.create_stop_word_remover()
+        stopwords_removed_query = stop_word_remover.remove(stemmed_query)
+
+        splitted_query = stopwords_removed_query.split(' ')
+        boolean_query = ' AND '.join(splitted_query)
+
+        postings_list_result = []
+        with InvertedIndexReader(self.index_name, self.postings_encoding, directory = self.output_dir) as final_index:
+            if len(splitted_query) > 1:
+                for term in splitted_query:
+                    termId = self.term_id_map[term]
+                    # print(termId)
+                    postings_list = final_index.get_postings_list(termId)
+                    postings_list_result.append(postings_list)
+            else:
+                termId = self.term_id_map[splitted_query[0]]
+                # print(termId)
+                postings_list = final_index.get_postings_list(termId)
+                # print(postings_list)
+                postings_list_result.append(postings_list)
+        
+        result = []
+        if (len(postings_list_result) > 1):
+            find_intersection = sorted_intersect(VBEPostings.decode(postings_list_result[0]), VBEPostings.decode(postings_list_result[1]))
+            if (len(postings_list_result) > 2):
+                for idx in range(2, len(postings_list_result)):
+                    find_intersection = sorted_intersect(find_intersection, VBEPostings.decode(postings_list_result[idx]))
+            result = find_intersection
+        else:
+            result = VBEPostings.decode(postings_list_result[0])
+        
+        # for item in result:
+        #     print(self.doc_id_map[item])
+        print(result)
+        return result
 
 
     def index(self):
@@ -259,8 +305,6 @@ class BSBIIndex:
         """
         # loop untuk setiap sub-directory di dalam folder collection (setiap block)
         for block_dir_relative in tqdm(sorted(next(os.walk(self.data_dir))[1])):
-        # for block_dir_relative in ['0', '10', '11']:
-            # print(block_dir_relative)
             td_pairs = self.parse_block(block_dir_relative)
             index_id = 'intermediate_index_'+block_dir_relative
             self.intermediate_indices.append(index_id)

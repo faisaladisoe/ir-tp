@@ -116,10 +116,11 @@ class VBEPostings:
             bytearray yang merepresentasikan urutan integer di postings_list
         """
         gap_based_pl = []
-        gap_based_pl.append(postings_list[0])
-        for idx in range(1, len(postings_list)):
-            gap = postings_list[idx] - postings_list[idx - 1]
-            gap_based_pl.append(gap)
+        if len(postings_list) > 0:
+            gap_based_pl.append(postings_list[0])
+            for idx in range(1, len(postings_list)):
+                gap = postings_list[idx] - postings_list[idx - 1]
+                gap_based_pl.append(gap)
         return VBEPostings.vb_encode(gap_based_pl)
 
     @staticmethod
@@ -159,10 +160,11 @@ class VBEPostings:
         """
         result = []
         decoded_gap_based_pl = VBEPostings.vb_decode(encoded_postings_list)
-        result.append(decoded_gap_based_pl[0])
-        for idx in range(1, len(decoded_gap_based_pl)):
-            original_num = decoded_gap_based_pl[idx] + result[idx - 1]
-            result.append(original_num)
+        if len(decoded_gap_based_pl) > 0:
+            result.append(decoded_gap_based_pl[0])
+            for idx in range(1, len(decoded_gap_based_pl)):
+                original_num = decoded_gap_based_pl[idx] + result[idx - 1]
+                result.append(original_num)
         return result
 
 if __name__ == '__main__':

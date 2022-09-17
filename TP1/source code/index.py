@@ -53,6 +53,8 @@ class InvertedIndex:
         self.postings_dict = {}
         self.terms = []         #Untuk keep track urutan term yang dimasukkan ke index
 
+        self.file_counter = 0
+
     def __enter__(self):
         """
         Memuat semua metadata ketika memasuki context.
@@ -120,14 +122,19 @@ class InvertedIndexReader(InvertedIndex):
         diproses di memori. JANGAN MEMUAT SEMUA INDEX DI MEMORI!
         """
         # TODO
-        result = ''
-        data = self.postings_dict
+        result = []
+        positions = self.terms[self.file_counter:self.file_counter + 5]
         try:
-            result = data[self.term_iter]
-        except IndexError:
+            for position in positions:
+                start_position = self.postings_dict[position][0]
+                length_in_bytes = self.postings_dict[position][2]
+                self.index_file.seek(start_position)
+                postings_list = self.index_file.read(length_in_bytes)
+                result.append((position, postings_list))
+        except:
             raise StopIteration
-        self.term_iter += 1
-        return (result, result.values())
+        self.file_counter += 5
+        return (result, positions)
 
     def get_postings_list(self, term):
         """

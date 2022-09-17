@@ -36,8 +36,6 @@ class BSBIIndex:
         # Untuk menyimpan nama-nama file dari semua intermediate inverted index
         self.intermediate_indices = []
 
-        self.tokenize_result = []
-
     def save(self):
         """Menyimpan doc_id_map and term_id_map ke output directory via pickle"""
 
@@ -196,6 +194,31 @@ class BSBIIndex:
             semua intermediate InvertedIndexWriter objects.
         """
         # TODO
+        term_pl_container = []
+        for index in indices:
+            for item in index:
+                if not len(item[1]):
+                    break
+                term_pl_container.append(item[0])
+        
+        data = {}
+        for item in term_pl_container:
+            term_pl_pairs = item[0]
+            for pair in term_pl_pairs:
+                try:
+                    data[pair[0]] += pair[1]
+                except:
+                    data[pair[0]] = pair[1]
+
+        # handle multiple postings list when merge
+
+        # sort data using external sorting
+        heap = []
+        for item in data:
+            heapq.heappush(heap, item)
+
+        for item in heap:
+            merged_index.append(item, data[item])
 
     def retrieve(self, query):
         """
@@ -236,6 +259,8 @@ class BSBIIndex:
         """
         # loop untuk setiap sub-directory di dalam folder collection (setiap block)
         for block_dir_relative in tqdm(sorted(next(os.walk(self.data_dir))[1])):
+        # for block_dir_relative in ['0', '10', '11']:
+            # print(block_dir_relative)
             td_pairs = self.parse_block(block_dir_relative)
             index_id = 'intermediate_index_'+block_dir_relative
             self.intermediate_indices.append(index_id)

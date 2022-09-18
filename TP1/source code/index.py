@@ -1,5 +1,6 @@
 import os
 import pickle
+from tracemalloc import start
 
 class InvertedIndex:
     """
@@ -54,6 +55,7 @@ class InvertedIndex:
         self.terms = []         #Untuk keep track urutan term yang dimasukkan ke index
 
         self.file_counter = 0
+        self.current_length_pl = 0
 
     def __enter__(self):
         """
@@ -121,7 +123,6 @@ class InvertedIndexReader(InvertedIndex):
         file index yang besar. Mengapa hanya sebagian kecil? karena agar muat
         diproses di memori. JANGAN MEMUAT SEMUA INDEX DI MEMORI!
         """
-        # TODO
         result = []
         positions = self.terms[self.file_counter:self.file_counter + 5]
         try:
@@ -145,7 +146,6 @@ class InvertedIndexReader(InvertedIndex):
         byte tertentu pada file (index file) dimana postings list dari
         term disimpan.
         """
-        # TODO
         return self.postings_dict[term]
 
 class InvertedIndexWriter(InvertedIndex):
@@ -187,17 +187,13 @@ class InvertedIndexWriter(InvertedIndex):
         postings_list: List[Int]
             List of docIDs dimana term muncul
         """
-        # TODO
         encoded_postings_list = self.postings_encoding.encode(postings_list)
 
-        start_pos = 0
+        start_pos = self.current_length_pl
         self.terms.append(term)
-        current_position = self.terms.index(term)
-        if len(self.postings_dict) > 0:
-            find_term = self.terms[current_position - 1]
-            start_pos = InvertedIndexReader.get_postings_list(self, find_term)[2]
 
         self.postings_dict[term] = (start_pos, len(postings_list), len(encoded_postings_list))
+        self.current_length_pl += len(encoded_postings_list)
 
         mode = ''
         if start_pos == 0:

@@ -3,6 +3,7 @@ import pickle
 import contextlib
 import heapq
 import time
+import math
 
 from index import InvertedIndexReader, InvertedIndexWriter
 from util import IdMap, sorted_intersect
@@ -87,7 +88,6 @@ class BSBIIndex:
         termIDs dan docIDs. Dua variable ini harus persis untuk semua pemanggilan
         parse_block(...).
         """
-        # TODO
         folder_path = f'./collection/{block_dir_relative}'
         files = os.listdir(folder_path)
         paths = []
@@ -193,7 +193,6 @@ class BSBIIndex:
             Instance InvertedIndexWriter object yang merupakan hasil merging dari
             semua intermediate InvertedIndexWriter objects.
         """
-        # TODO
         term_pl_container = []
         for index in indices:
             for item in index:
@@ -208,21 +207,8 @@ class BSBIIndex:
                     data[pair[0]] += VBEPostings.decode(pair[1])
                 except:
                     data[pair[0]] = VBEPostings.decode(pair[1])
-        
-        # handle multiple occurence & resorted
-        for pair in data:
-            data[pair] = sorted(list(set(data[pair])))
-        
-        # re-encode postings list
-        for pair in data:
-            data[pair] = VBEPostings.encode(data[pair])
 
-        # sort data using external sorting
-        heap = []
         for item in data:
-            heapq.heappush(heap, item)
-
-        for item in heap:
             merged_index.append(item, data[item])
 
     def retrieve(self, query):
@@ -248,7 +234,6 @@ class BSBIIndex:
 
         JANGAN LEMPAR ERROR/EXCEPTION untuk terms yang TIDAK ADA di collection.
         """
-        # TODO
         self.load()
 
         # stemming
@@ -264,20 +249,28 @@ class BSBIIndex:
         splitted_query = stopwords_removed_query.split(' ')
         boolean_query = ' AND '.join(splitted_query)
 
-        postings_list_result = []
+        total_item = []
         with InvertedIndexReader(self.index_name, self.postings_encoding, directory = self.output_dir) as final_index:
-            if len(splitted_query) > 1:
-                for term in splitted_query:
-                    termId = self.term_id_map[term]
-                    postings_list = final_index.get_postings_list(termId)
-                    postings_list_result.append(postings_list)
-            else:
-                termId = self.term_id_map[splitted_query[0]]
-                postings_list = final_index.get_postings_list(termId)
-                postings_list_result.append(postings_list)
+            for item in final_index:
+                if len(item[0]) == 0:
+                    break
+                total_item.append(item[0])
+
+        postings_list_result = []
+        if len(splitted_query) > 1:
+            for term in splitted_query:
+                termId = self.term_id_map[term]
+                block = total_item[math.floor(termId / 5)]
+                position = block[termId % 5][1]
+                postings_list_result.append(VBEPostings.decode(position))
+        else:
+            termId = self.term_id_map[splitted_query[0]]
+            block = total_item[math.floor(termId / 5)]
+            position = block[termId % 5][1]
+            postings_list_result.append(VBEPostings.decode(position))
     
         intersection = []
-        if (len(postings_list_result) > 1):
+        if len(postings_list_result) > 1:
             find_intersection = sorted_intersect(postings_list_result[0], postings_list_result[1])
             if (len(postings_list_result) > 2):
                 for idx in range(2, len(postings_list_result)):
@@ -285,8 +278,10 @@ class BSBIIndex:
             intersection = find_intersection
         else:
             intersection = postings_list_result[0]
-        
+
         result = [self.doc_id_map[item] for item in intersection]
+        total_item = []
+        print(f'There are {len(result)} documents')
 
         return result
 

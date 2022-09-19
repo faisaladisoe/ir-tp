@@ -261,13 +261,15 @@ class BSBIIndex:
             for term in splitted_query:
                 termId = self.term_id_map[term]
                 block = total_item[math.floor(termId / 5)]
-                position = block[termId % 5][1]
-                postings_list_result.append(VBEPostings.decode(position))
+                position = block[termId % 5]
+                if termId == position[0]:
+                    postings_list_result.append(VBEPostings.decode(position[1]))
         else:
             termId = self.term_id_map[splitted_query[0]]
             block = total_item[math.floor(termId / 5)]
-            position = block[termId % 5][1]
-            postings_list_result.append(VBEPostings.decode(position))
+            position = block[termId % 5]
+            if termId == position[0]:
+                postings_list_result.append(VBEPostings.decode(position[1]))
     
         intersection = []
         if len(postings_list_result) > 1:

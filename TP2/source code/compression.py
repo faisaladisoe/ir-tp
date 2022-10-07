@@ -150,8 +150,13 @@ class VBEPostings:
         bytes
             bytearray yang merepresentasikan urutan integer di postings_list
         """
-        # TODO
-        return None
+        gap_based_pl = []
+        if len(postings_list) > 0:
+            gap_based_pl.append(postings_list[0])
+            for idx in range(1, len(postings_list)):
+                gap = postings_list[idx] - postings_list[idx - 1]
+                gap_based_pl.append(gap)
+        return VBEPostings.vb_encode(gap_based_pl)
 
     @staticmethod
     def encode_tf(tf_list):
@@ -177,8 +182,16 @@ class VBEPostings:
         Decoding sebuah bytestream yang sebelumnya di-encode dengan
         variable-byte encoding.
         """
-        # TODO
-        return None
+        numbers = []
+        n = 0
+        for idx in range(len(encoded_bytestream)):
+            if encoded_bytestream[idx] < 128:
+                n = (128 * n) + encoded_bytestream[idx]
+            else:
+                n = (128 * n) + (encoded_bytestream[idx] - 128)
+                numbers.append(n)
+                n = 0
+        return numbers
 
     @staticmethod
     def decode(encoded_postings_list):
@@ -198,8 +211,14 @@ class VBEPostings:
         List[int]
             list of docIDs yang merupakan hasil decoding dari encoded_postings_list
         """
-        # TODO
-        return []
+        result = []
+        decoded_gap_based_pl = VBEPostings.vb_decode(encoded_postings_list)
+        if len(decoded_gap_based_pl) > 0:
+            result.append(decoded_gap_based_pl[0])
+            for idx in range(1, len(decoded_gap_based_pl)):
+                original_num = decoded_gap_based_pl[idx] + result[idx - 1]
+                result.append(original_num)
+        return result
 
     @staticmethod
     def decode_tf(encoded_tf_list):

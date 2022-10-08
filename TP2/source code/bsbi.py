@@ -1,14 +1,17 @@
 import os
+import math
+import time
+import heapq
 import pickle
 import contextlib
-import heapq
-import time
-import math
 
-from index import InvertedIndexReader, InvertedIndexWriter
+from tqdm import tqdm
+from nltk.corpus import stopwords
+from nltk.stem.snowball import SnowballStemmer
 from util import IdMap, sorted_merge_posts_and_tfs
 from compression import StandardPostings, VBEPostings
-from tqdm import tqdm
+from nltk.tokenize import sent_tokenize, word_tokenize
+from index import InvertedIndexReader, InvertedIndexWriter
 
 class BSBIIndex:
     """
@@ -30,6 +33,7 @@ class BSBIIndex:
         self.output_dir = output_dir
         self.index_name = index_name
         self.postings_encoding = postings_encoding
+        self.tdtf_combination = []
 
         # Untuk menyimpan nama-nama file dari semua intermediate inverted index
         self.intermediate_indices = []
@@ -83,8 +87,72 @@ class BSBIIndex:
         termIDs dan docIDs. Dua variable ini harus 'persist' untuk semua pemanggilan
         parse_block(...).
         """
-        # TODO
-        return []
+        folder_path = f'./collection/{block_dir_relative}'
+        files = os.listdir(folder_path)
+        paths = []
+
+        # sentence segmentation & tokenisation
+        tokenize_result_with_punct = []
+        for file in files:
+            path = f'{folder_path}/{file}'
+            paths.append(path)
+            with open(path, 'r') as f:
+                tokenize_result_with_punct.append([word_tokenize(t) for t in sent_tokenize(f.read())])
+        
+        tokenize_result_wo_punct = []
+        for file in tokenize_result_with_punct:
+            same_file_result = []
+            for sentence in file:
+                same_file_result.append([word for word in sentence if word.isalnum()])
+            tokenize_result_wo_punct.append(same_file_result)
+        
+        # stemming
+        stemmed_result_in_general = []
+        stemmer = SnowballStemmer('english')
+        for file in tokenize_result_wo_punct:
+            same_file_result = []
+            for sentence in file:
+                same_file_result.append([stemmer.stem(word) for word in sentence])
+            stemmed_result_in_general.append(same_file_result)
+
+        # stopwords removal
+        stopword_removed_result_in_general = []
+        stop_word_remover = set(stopwords.words('english'))
+        for file in stemmed_result_in_general:
+            same_file_result = []
+            for sentence in file:
+                same_file_result.append([word for word in sentence if not word.lower() in stop_word_remover])
+            stopword_removed_result_in_general.append(same_file_result)
+        
+        stopword_removed_result_in_sentences = []
+        for file in stopword_removed_result_in_general:
+            whole_sentence = ''
+            for sentence in file:
+                whole_sentence += ' '.join(sentence) + ' '
+            stopword_removed_result_in_sentences.append(whole_sentence.strip())
+        
+        # term and doc mapping
+        term_id_map_result = []
+        words_per_file = [file.split(' ') for file in stopword_removed_result_in_sentences]
+        for sentence in words_per_file:
+            for term in sentence:
+                term_id_map_result.append(self.term_id_map[term])
+        doc_id_map_result = [self.doc_id_map[docname] for docname in paths]
+
+        # pair matching
+        td_pairs = []
+        tdtf_pairs = []
+        for idx in range(len(words_per_file)):
+            for term in words_per_file[idx]:
+                termId = self.term_id_map[term]
+                docname = paths[idx]
+                docId = self.doc_id_map[docname]
+                tfTerm = words_per_file[idx].count(term)
+                td_pairs.append((termId, docId))
+                tdtf_pairs.append((termId, docId, tfTerm))
+
+        self.tdtf_combination = tdtf_pairs
+        return td_pairs
 
     def invert_write(self, td_pairs, index):
         """
@@ -108,7 +176,20 @@ class BSBIIndex:
         index: InvertedIndexWriter
             Inverted index pada disk (file) yang terkait dengan suatu "block"
         """
-        # TODO
+        term_dict = {}
+        for term_id, doc_id, tf_term in self.tdtf_combination:
+            if term_id not in term_dict:
+                term_dict[term_id] = set()
+            term_dict[term_id].add((doc_id, tf_term))
+        for term_id in sorted(term_dict.keys()):
+            term_value = sorted(list(term_dict[term_id]), key=lambda x: x[0])
+            postings_list = []
+            tf_list = []
+            for doc_id, tf_term in term_value:
+                postings_list.append(doc_id)
+                tf_list.append(tf_term)
+            if len(postings_list) == len(tf_list):
+                index.append(term_id, postings_list, tf_list)
 
     def merge(self, indices, merged_index):
         """
@@ -180,8 +261,50 @@ class BSBIIndex:
         JANGAN LEMPAR ERROR/EXCEPTION untuk terms yang TIDAK ADA di collection.
 
         """
-        # TODO
-        return []
+        self.load()
+
+        # stemming
+        stemmer = SnowballStemmer('english')
+        stemmed_query = [stemmer.stem(word) for word in word_tokenize(query)]
+
+        # stopwords removal
+        stop_word_remover = set(stopwords.words('english'))
+        stopword_removed_query = [word for word in stemmed_query if not word.lower() in stop_word_remover]
+
+        term_id_of_query = [self.term_id_map[word] for word in stopword_removed_query]
+
+        data_of_each_query = []
+        with InvertedIndexReader(self.index_name, self.postings_encoding, directory = self.output_dir) as final_index:
+            for item in final_index:
+                if item[0] in term_id_of_query:
+                    data_of_each_query.append(item)
+        
+        merge_pl_and_tfl = []
+        for token_data in data_of_each_query:
+            pl_and_tfl = []
+            for idx in range(len(token_data[1])):
+                pl_and_tfl.append((token_data[1][idx], token_data[2][idx]))
+            merge_pl_and_tfl.append((token_data[0], pl_and_tfl))
+        
+        merge_all_pl_and_tfl_in_query = []
+        for _, pl_and_tfl in merge_pl_and_tfl:
+            merge_all_pl_and_tfl_in_query = sorted_merge_posts_and_tfs(merge_all_pl_and_tfl_in_query, pl_and_tfl)
+
+        mapping_term_id_with_its_data = {}
+        for term_id, pl, tf in data_of_each_query:
+            mapping_term_id_with_its_data[term_id] = (pl, tf)
+
+        heap_scores = []
+        N = len(self.doc_id_map)
+        for doc_id, term_freq in merge_all_pl_and_tfl_in_query:
+            for term in term_id_of_query:
+                if doc_id in mapping_term_id_with_its_data[term][0]:
+                    wtD = (1 + math.log10(term_freq))
+                    wtQ = math.log10(N // len(mapping_term_id_with_its_data[term][0]))
+                    score = wtD * wtQ
+                    heapq.heappush(heap_scores, (score, self.doc_id_map[doc_id]))
+        
+        return heapq.nlargest(k, heap_scores, key=lambda x: x[0])
 
     def index(self):
         """

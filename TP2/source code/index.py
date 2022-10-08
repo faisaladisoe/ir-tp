@@ -58,6 +58,7 @@ class InvertedIndex:
         self.doc_length = {}    # key: doc ID (int), value: document length (number of tokens)
                                 # Ini nantinya akan berguna untuk normalisasi Score terhadap panjang
                                 # dokumen saat menghitung score dengan TF-IDF atau BM25
+        self.current_length_pl = 0
 
     def __enter__(self):
         """
@@ -147,8 +148,7 @@ class InvertedIndexReader(InvertedIndex):
         byte tertentu pada file (index file) dimana postings list (dan juga
         list of TF) dari term disimpan.
         """
-        # TODO
-        return None
+        return self.postings_dict[term]
 
 
 class InvertedIndexWriter(InvertedIndex):
@@ -196,8 +196,34 @@ class InvertedIndexWriter(InvertedIndex):
         tf_list: List[Int]
             List of term frequencies
         """
-        # TODO
-        return None
+        encoded_postings_list = self.postings_encoding.encode(postings_list)
+        encoded_tf_list = self.postings_encoding.encode_tf(tf_list)
+
+        start_pos = self.current_length_pl
+        self.terms.append(term)
+
+        self.postings_dict[term] = (start_pos, len(postings_list), len(encoded_postings_list), len(encoded_tf_list))
+        self.current_length_pl += len(encoded_postings_list) + len(encoded_tf_list)
+
+        for idx in range(len(postings_list)):
+            try:
+                self.doc_length[postings_list[idx]] += tf_list[idx]
+            except:
+                self.doc_length[postings_list[idx]] = tf_list[idx]
+
+        mode = ''
+        if start_pos == 0:
+            mode = 'wb'
+        else:
+            mode = 'rb+'
+        with open(self.index_file_path, mode) as f:
+            f.seek(start_pos)
+            f.write(encoded_postings_list)
+            f.seek(start_pos + len(encoded_postings_list))
+            f.write(encoded_tf_list)
+            f.close()
+
+        return encoded_postings_list
 
 
 if __name__ == "__main__":

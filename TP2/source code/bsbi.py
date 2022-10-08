@@ -38,6 +38,13 @@ class BSBIIndex:
         # Untuk menyimpan nama-nama file dari semua intermediate inverted index
         self.intermediate_indices = []
 
+        with InvertedIndexReader(self.index_name, self.postings_encoding, directory = self.output_dir) as final_index:
+            self.doc_length = final_index.doc_length
+            self.avg_doc_length = 0
+            for _, doc_length in self.doc_length.items():
+                self.avg_doc_length += doc_length
+            self.avg_doc_length /= len(self.doc_length)
+
     def save(self):
         """Menyimpan doc_id_map and term_id_map ke output directory via pickle"""
 
@@ -224,6 +231,46 @@ class BSBIIndex:
                 merged_index.append(curr, postings, tf_list)
                 curr, postings, tf_list = t, postings_, tf_list_
         merged_index.append(curr, postings, tf_list)
+    
+    def retrieve_general(self, query):
+        self.load()
+
+        # query segmentation & tokenization
+        tokenized_query_with_punct = [token for token in word_tokenize(query)]
+        tokenized_query_wo_punct = [token for token in tokenized_query_with_punct if token.isalnum()]
+
+        # stemming
+        stemmer = SnowballStemmer('english')
+        stemmed_query = [stemmer.stem(word) for word in tokenized_query_wo_punct]
+
+        # stopwords removal
+        stop_word_remover = set(stopwords.words('english'))
+        stopword_removed_query = [word for word in stemmed_query if not word.lower() in stop_word_remover]
+
+        term_id_of_query = [self.term_id_map[word] for word in stopword_removed_query]
+
+        data_of_each_query = []
+        with InvertedIndexReader(self.index_name, self.postings_encoding, directory = self.output_dir) as final_index:
+            for item in final_index:
+                if item[0] in term_id_of_query:
+                    data_of_each_query.append(item)
+        
+        merge_pl_and_tfl = []
+        for token_data in data_of_each_query:
+            pl_and_tfl = []
+            for idx in range(len(token_data[1])):
+                pl_and_tfl.append((token_data[1][idx], token_data[2][idx]))
+            merge_pl_and_tfl.append((token_data[0], pl_and_tfl))
+        
+        merge_all_pl_and_tfl_in_query = []
+        for _, pl_and_tfl in merge_pl_and_tfl:
+            merge_all_pl_and_tfl_in_query = sorted_merge_posts_and_tfs(merge_all_pl_and_tfl_in_query, pl_and_tfl)
+
+        mapping_term_id_with_its_data = {}
+        for term_id, pl, tf in data_of_each_query:
+            mapping_term_id_with_its_data[term_id] = (pl, tf)
+        
+        return merge_all_pl_and_tfl_in_query, term_id_of_query, mapping_term_id_with_its_data
 
     def retrieve_tfidf(self, query, k = 10):
         """
@@ -261,45 +308,39 @@ class BSBIIndex:
         JANGAN LEMPAR ERROR/EXCEPTION untuk terms yang TIDAK ADA di collection.
 
         """
-        self.load()
-
-        # stemming
-        stemmer = SnowballStemmer('english')
-        stemmed_query = [stemmer.stem(word) for word in word_tokenize(query)]
-
-        # stopwords removal
-        stop_word_remover = set(stopwords.words('english'))
-        stopword_removed_query = [word for word in stemmed_query if not word.lower() in stop_word_remover]
-
-        term_id_of_query = [self.term_id_map[word] for word in stopword_removed_query]
-
-        data_of_each_query = []
-        with InvertedIndexReader(self.index_name, self.postings_encoding, directory = self.output_dir) as final_index:
-            for item in final_index:
-                if item[0] in term_id_of_query:
-                    data_of_each_query.append(item)
-        
-        merge_pl_and_tfl = []
-        for token_data in data_of_each_query:
-            pl_and_tfl = []
-            for idx in range(len(token_data[1])):
-                pl_and_tfl.append((token_data[1][idx], token_data[2][idx]))
-            merge_pl_and_tfl.append((token_data[0], pl_and_tfl))
-        
-        merge_all_pl_and_tfl_in_query = []
-        for _, pl_and_tfl in merge_pl_and_tfl:
-            merge_all_pl_and_tfl_in_query = sorted_merge_posts_and_tfs(merge_all_pl_and_tfl_in_query, pl_and_tfl)
-
-        mapping_term_id_with_its_data = {}
-        for term_id, pl, tf in data_of_each_query:
-            mapping_term_id_with_its_data[term_id] = (pl, tf)
+        merge_all_pl_and_tfl_in_query, term_id_of_query, mapping_term_id_with_its_data = self.retrieve_general(query)
 
         heap_scores = []
         N = len(self.doc_id_map)
         for doc_id, term_freq in merge_all_pl_and_tfl_in_query:
             for term in term_id_of_query:
-                if doc_id in mapping_term_id_with_its_data[term][0]:
+                try:
+                    data = mapping_term_id_with_its_data[term][0]
+                except:
+                    continue
+                if doc_id in data:
                     wtD = (1 + math.log10(term_freq))
+                    wtQ = math.log10(N // len(mapping_term_id_with_its_data[term][0]))
+                    score = wtD * wtQ
+                    heapq.heappush(heap_scores, (score, self.doc_id_map[doc_id]))
+
+        return heapq.nlargest(k, heap_scores, key=lambda x: x[0])
+    
+    def retrieve_bm25(self, query, k = 10, tf_scaling = 1.5, doc_len_norm = .75):
+        merge_all_pl_and_tfl_in_query, term_id_of_query, mapping_term_id_with_its_data = self.retrieve_general(query)
+
+        heap_scores = []
+        N = len(self.doc_id_map)
+        for doc_id, term_freq in merge_all_pl_and_tfl_in_query:
+            for term in term_id_of_query:
+                try:
+                    data = mapping_term_id_with_its_data[term][0]
+                except:
+                    continue
+                if doc_id in data:
+                    wtD_numerator = (tf_scaling + 1) * term_freq
+                    wtD_denominator = (tf_scaling * ((1 - doc_len_norm) + (doc_len_norm * self.doc_length[doc_id]) / self.avg_doc_length)) + term_freq
+                    wtD = wtD_numerator / wtD_denominator
                     wtQ = math.log10(N // len(mapping_term_id_with_its_data[term][0]))
                     score = wtD * wtQ
                     heapq.heappush(heap_scores, (score, self.doc_id_map[doc_id]))

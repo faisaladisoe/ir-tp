@@ -148,7 +148,19 @@ class InvertedIndexReader(InvertedIndex):
         byte tertentu pada file (index file) dimana postings list (dan juga
         list of TF) dari term disimpan.
         """
-        return self.postings_dict[term]
+        start_pos, _, len_encoded_postings_list, len_encoded_tf_list = self.postings_dict[term]
+
+        with open(self.index_file_path, 'rb') as f:
+            f.seek(start_pos)
+            encoded_postings_list = f.read(len_encoded_postings_list)
+
+            f.seek(start_pos + len_encoded_postings_list)
+            encoded_tf_list = f.read(len_encoded_tf_list)
+
+        postings_list = self.postings_encoding.decode(encoded_postings_list)
+        tf_list = self.postings_encoding.decode(encoded_tf_list)
+
+        return (postings_list, tf_list)
 
 
 class InvertedIndexWriter(InvertedIndex):

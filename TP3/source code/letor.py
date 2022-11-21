@@ -201,15 +201,15 @@ class LSIAModel():
       print(did, round(score, 2))
 
 def fetch_result_from_search():
-  proc = subprocess.Popen('python3 search.py > ./models/search_result.txt'.split())
+  proc = subprocess.Popen('python3 search.py > ./models/result-tfidf.txt'.split())
   proc.wait()
 
 def read_result_from_search():
   docs = []
   queries = []
 
-  num_lines = sum(1 for _ in open('./models/search_result.txt'))
-  with open('./models/search_result.txt', 'r') as f:
+  num_lines = sum(1 for _ in open('./models/result-tfidf.txt'))
+  with open('./models/result-tfidf.txt', 'r') as f:
     temp = []
     for _ in range(num_lines):
       parts = re.split(r'[ ]*[: ][ ]*', f.readline().strip())
